@@ -1,10 +1,11 @@
 # agent.py
 
 import os
-from typing import List
+from typing import TypedDict
+from langgraph.graph import StateGraph
 
-# 🔑 SET YOUR GROQ KEY HERE
-os.environ["GROQ_API_KEY"] = "your_actual_key"
+
+
 
 # -----------------------------
 # GLOBALS (lazy load)
@@ -27,9 +28,10 @@ def initialize_system():
     from sentence_transformers import SentenceTransformer
     from langchain_groq import ChatGroq
 
-    # Embeddings
+    # Embedding model
     embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
+    # Knowledge base
     documents = [
         "Agentic AI systems can reason, act and use tools.",
         "ReAct framework combines reasoning and acting.",
@@ -54,29 +56,82 @@ def initialize_system():
         ids=[str(i) for i in range(len(documents))]
     )
 
-  
+    # Groq LLM (working model)
     llm = ChatGroq(model="llama-3.1-8b-instant")
 
 
 # -----------------------------
-# MAIN FUNCTION
+# STATE
 # -----------------------------
-def ask_agent(question: str):
-    initialize_system()
+class AgentState(TypedDict):
+    question: str
+    retrieved: str
+    answer: str
+    route: str
 
-    query_embedding = embedder.encode([question]).tolist()
+
+# -----------------------------
+# NODES
+# -----------------------------
+
+# 1. ROUTER
+def router_node(state):
+    question = state["question"].lower()
+
+    # Tool queries
+    if any(word in question for word in ["calculate", "sum", "add", "multiply", "+", "-", "*", "/"]):
+        state["route"] = "tool"
+
+    # Default: use retrieval for MOST queries
+    elif len(question.split()) > 2:
+        state["route"] = "retrieve"
+
+    else:
+        state["route"] = "fallback"
+
+    return state
+
+
+# 2. RETRIEVAL (RAG)
+def retrieval_node(state):
+    query_embedding = embedder.encode([state["question"]]).tolist()
 
     results = collection.query(
         query_embeddings=query_embedding,
         n_results=2
     )
 
-    context = "\n".join(results["documents"][0])
+    state["retrieved"] = "\n".join(results["documents"][0])
+    return state
+
+
+# 3. TOOL (Calculator)
+def tool_node(state):
+    try:
+        result = eval(state["question"])
+        state["answer"] = f"Calculated result: {result}"
+    except:
+        state["answer"] = "Tool could not process the query."
+
+    return state
+
+
+# 4. ANSWER GENERATION
+def answer_node(state):
+    context = state.get("retrieved", "")
+    question = state["question"]
+
+    # Only check if context exists
+    if not context.strip():
+        state["answer"] = "This question is outside the course knowledge base."
+        return state
 
     prompt = f"""
 You are an AI assistant.
 
-Use the context to answer clearly.
+Answer ONLY from the given context.
+If the answer is not present, say:
+"This question is outside the course knowledge base."
 
 Context:
 {context}
@@ -88,7 +143,53 @@ Answer:
 """
 
     response = llm.invoke(prompt)
+    state["answer"] = response.content.strip()
 
-    answer = response.content.strip()
+    return state
 
-    return answer
+# -----------------------------
+# BUILD GRAPH
+# -----------------------------
+def build_graph():
+    builder = StateGraph(AgentState)
+
+    builder.add_node("router", router_node)
+    builder.add_node("retrieve", retrieval_node)
+    builder.add_node("tool", tool_node)
+    builder.add_node("answer", answer_node)
+
+    builder.set_entry_point("router")
+
+    builder.add_conditional_edges(
+        "router",
+        lambda state: state["route"],
+        {
+            "retrieve": "retrieve",
+            "tool": "tool",
+            "fallback": "answer"
+        }
+    )
+
+    builder.add_edge("retrieve", "answer")
+
+    return builder.compile()
+
+
+# -----------------------------
+# MAIN FUNCTION
+# -----------------------------
+def ask_agent(question: str):
+    initialize_system()
+
+    graph = build_graph()
+
+    result = graph.invoke({
+        "question": question
+    })
+
+    return result["answer"]
+
+if __name__ == "__main__":
+    print(ask_agent("What is LangGraph?"))
+    print(ask_agent("2 + 2"))
+    print(ask_agent("Who is Messi?"))
