@@ -48,9 +48,12 @@ def initialize_system():
 
     embeddings = embedder.encode(documents).tolist()
 
-    client = chromadb.Client()
-    collection = client.create_collection("course_assistant")
+   client = chromadb.Client()
 
+# Create the collection only once, reuse it on reruns
+collection = client.get_or_create_collection("course_assistant")
+    # Add documents only if the collection is empty
+if collection.count() == 0:
     collection.add(
         documents=documents,
         embeddings=embeddings,
