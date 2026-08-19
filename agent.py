@@ -1,6 +1,7 @@
 # agent.py
 
 import os
+import streamlit as st
 from typing import TypedDict
 from langgraph.graph import StateGraph
 
@@ -57,7 +58,10 @@ def initialize_system():
     )
 
     # Groq LLM (working model)
-    llm = ChatGroq(model="llama-3.1-8b-instant")
+    llm = ChatGroq(
+    model="llama-3.1-8b-instant",
+    api_key=st.secrets["GROQ_API_KEY"]
+)
 
 
 # -----------------------------
