@@ -26,6 +26,7 @@ def initialize_system():
         return
 
     import chromadb
+    import streamlit as st
     from sentence_transformers import SentenceTransformer
     from langchain_groq import ChatGroq
 
@@ -48,23 +49,22 @@ def initialize_system():
 
     embeddings = embedder.encode(documents).tolist()
 
-   client = chromadb.Client()
+    # ChromaDB
+    client = chromadb.Client()
+    collection = client.get_or_create_collection("course_assistant")
 
-# Create the collection only once, reuse it on reruns
-collection = client.get_or_create_collection("course_assistant")
-    # Add documents only if the collection is empty
-if collection.count() == 0:
-    collection.add(
-        documents=documents,
-        embeddings=embeddings,
-        ids=[str(i) for i in range(len(documents))]
-    )
+    if collection.count() == 0:
+        collection.add(
+            documents=documents,
+            embeddings=embeddings,
+            ids=[str(i) for i in range(len(documents))]
+        )
 
-    # Groq LLM (working model)
+    # Groq LLM
     llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    api_key=st.secrets["GROQ_API_KEY"]
-)
+        model="llama-3.3-70b-versatile",
+        api_key=st.secrets["GROQ_API_KEY"]
+    )
 
 
 # -----------------------------
