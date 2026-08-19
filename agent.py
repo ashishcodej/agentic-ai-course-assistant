@@ -62,10 +62,9 @@ def initialize_system():
 
     # Groq LLM
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        api_key=st.secrets["GROQ_API_KEY"]
-    )
-
+    model="llama-3.1-8b-instant",
+    api_key=st.secrets["GROQ_API_KEY"]
+)
 
 # -----------------------------
 # STATE
